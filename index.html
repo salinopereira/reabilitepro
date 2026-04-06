@@ -811,54 +811,32 @@ async function api(action, data = {}) {
   try {
     // Preparar payload JSON no formato esperado pelo backend: {action, data}
     const payload = { action, data };
-    
+
+    console.log('Enviando payload:', JSON.stringify(payload).substring(0, 200));
+
+    // Usar proxy CORS diretamente (Google Apps Script sempre bloqueia CORS)
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    console.log('Enviando payload:', JSON.stringify(payload).substring(0, 200));
-    
-    // PRIMEIRO: Tentar requisção direta (sem proxy)
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      const text = await res.text();
-      console.log('Resposta direta recebida, tamanho:', text.length);
-      
-      // Tentar extrair do userHtml
-      const result = parseHtmlServiceResponse(text);
-      if (result) return result;
-      
-      // Se falhou, try parse direto
-      if (text.trim().startsWith('{')) {
-        return JSON.parse(text.trim());
-      }
-    } catch(directError) {
-      console.warn('Requisição direta falhou:', directError.message);
-      console.log('Tentando via proxy...');
-      
-      // FALLBACK: Usar proxy se direto falhar
-      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
-      const res = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      const text = await res.text();
-      console.log('Resposta via proxy recebida, tamanho:', text.length);
-      
-      const result = parseHtmlServiceResponse(text);
-      if (result) return result;
+
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const text = await res.text();
+    console.log('Resposta recebida, tamanho:', text.length);
+
+    const result = parseHtmlServiceResponse(text);
+    if (result) {
+      console.log('Resposta parseada:', result);
+      return result;
     }
-    
+
     console.log('Resposta não pôde ser parseada');
     return { success: false, error: 'Resposta inválida da API.' };
   } catch(e) {
@@ -1030,7 +1008,11 @@ async function doLogin() {
   btn.disabled=true; btn.textContent='Entrando...';
   const r = await api('loginProfissional',{email:document.getElementById('lEmail').value.trim(),senha:document.getElementById('lSenha').value});
   btn.disabled=false; btn.textContent='Entrar →';
-  if (!r.success) { err.textContent=r.error; err.style.display='block'; return; }
+  if (!r.success || !r.profissional) {
+    err.textContent=r.error || 'Erro no login. Verifique suas credenciais.';
+    err.style.display='block';
+    return;
+  }
   prof = r.profissional;
   localStorage.setItem('hp_prof', JSON.stringify(prof));
   initApp();
@@ -1583,7 +1565,15 @@ function toast(msg,type='ok') {
 // BOOT
 // ============================================================
 const savedProf = localStorage.getItem('hp_prof');
-if(savedProf) { prof=JSON.parse(savedProf); initApp(); }
+if(savedProf && savedProf !== 'undefined' && savedProf !== 'null') {
+  try {
+    prof = JSON.parse(savedProf);
+    initApp();
+  } catch(e) {
+    console.warn('Erro ao carregar dados salvos, limpando localStorage');
+    localStorage.removeItem('hp_prof');
+  }
+}
 if(!API_URL.trim()) {
   // modo demo ativo por padrão até você colar a URL do Apps Script
 }
