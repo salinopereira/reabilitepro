@@ -809,8 +809,8 @@ async function api(action, data = {}) {
     return apiDemo(action, data);
   }
   try {
-    // Usar proxy CORS para contornar restrições
-    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(API_URL);
+    // Usar proxy CORS que suportam POST
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
     
     const res = await fetch(proxyUrl, {
       method: 'POST',
