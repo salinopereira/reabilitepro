@@ -819,40 +819,40 @@ async function api(action, data = {}) {
     });
     const text = await res.text();
     
+    // Log da resposta para debug
+    console.log('Resposta bruta:', text.substring(0, 500));
+    
     // Tentar extrair userHtml usando padrão mais flexível
     let jsonData = null;
     
-    // Padrão 1: Procurar por "userHtml":"..."
-    const match = text.match(/"userHtml"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
-    if (match && match[1]) {
+    // Padrão 1: Procurar por "userHtml":"..." com lookupahead
+    const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+    
+    if (userHtmlMatch) {
+      console.log('userHtml encontrado, valor bruto:', userHtmlMatch[1].substring(0, 200));
+      
       try {
-        // Desescapar: \\ -> \, \" -> "
-        const escaped = match[1];
-        let unescaped = '';
-        for (let i = 0; i < escaped.length; i++) {
-          if (escaped[i] === '\\' && i + 1 < escaped.length) {
-            const nextChar = escaped[i + 1];
-            if (nextChar === '"') unescaped += '"';
-            else if (nextChar === '\\') unescaped += '\\';
-            else if (nextChar === 'n') unescaped += '\n';
-            else if (nextChar === 't') unescaped += '\t';
-            else unescaped += nextChar;
-            i++;
-          } else {
-            unescaped += escaped[i];
-          }
-        }
+        // Usar JSON.parse para desescapar a string corretamente
+        const escaped = userHtmlMatch[1];
+        const fullStr = '"' + escaped + '"';
+        const unescaped = JSON.parse(fullStr);
+        console.log('Desescapado:', unescaped);
+        
         jsonData = JSON.parse(unescaped);
+        console.log('JSON parseado com sucesso:', jsonData);
       } catch(e) {
-        console.error('Erro ao desescapar/parsear userHtml:', e);
+        console.error('Erro ao desescapar/parsear userHtml:', e, 'valor:', userHtmlMatch[1]);
       }
+    } else {
+      console.log('userHtml não encontrado no texto');
     }
     
-    if (jsonData && jsonData.success !== undefined) {
+    if (jsonData && (jsonData.success !== undefined || jsonData.error)) {
       return jsonData;
     }
     
-    return { success: false, error: 'Resposta inválida da API. Tente novamente.' };
+    console.log('Nenhum JSON válido extraído');
+    return { success: false, error: 'Resposta inválida da API. Verifique o console para detalhes.' };
   } catch(e) {
     console.error('Erro na chamada API:', e);
     return { success: false, error: 'Erro de conexão. Verifique a URL da API.' };
