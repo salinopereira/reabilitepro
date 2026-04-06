@@ -809,72 +809,105 @@ async function api(action, data = {}) {
     return apiDemo(action, data);
   }
   try {
-    // Preparar dados como URLSearchParams (Google Apps Script acessa via e.parameter)
-    const params = new URLSearchParams();
-    params.append('action', action);
-    for (const [key, val] of Object.entries(data)) {
-      params.append(key, val || '');
-    }
-    
-    // Usar proxy CORS com timeout
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
+    // Preparar payload JSON puro (não aninh ado)
+    const payload = { action, ...data };
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     
-    const res = await fetch(proxyUrl, {
-      method: 'POST',
-      body: params.toString(),
-      // NÃO specifiquer Content-Type; Google Apps Script vai receber em e.parameter
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+    console.log('Enviando payload:', JSON.stringify(payload).substring(0, 200));
     
-    const text = await res.text();
-    console.log('Resposta recebida, tamanho:', text.length);
-    
-    // Procurar por "userHtml" no texto (é o padrão do HtmlService)
-    const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
-    if (userHtmlMatch && userHtmlMatch[1]) {
-      try {
-        // Desescapar: \x é hex escape, \\ é backslash
-        let escaped = userHtmlMatch[1];
-        
-        // Primeira passagem: converter \xNN para caracteres
-        escaped = escaped.replace(/\\x([0-9a-fA-F]{2})/g, function(match, hex) {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        
-        // Segunda passagem: desescapar JSON
-        const unescaped = JSON.parse('"' + escaped + '"');
-        console.log('JSON extraído:', unescaped.substring(0, 150));
-        
-        const jsonData = JSON.parse(unescaped);
-        console.log('Dados parseados:', jsonData);
-        return jsonData;
-      } catch(e) {
-        console.error('Erro ao processar userHtml:', e.message);
-      }
-    }
-    
-    // Se não achou userHtml, tentar parsear como JSON direto
+    // PRIMEIRO: Tentar requisção direta (sem proxy)
     try {
-      const cleaned = text.trim();
-      if (cleaned.startsWith('{')) {
-        const jsonData = JSON.parse(cleaned);
-        console.log('JSON parseado direto:', jsonData);
-        return jsonData;
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      const text = await res.text();
+      console.log('Resposta direta recebida, tamanho:', text.length);
+      
+      // Tentar extrair do userHtml
+      const result = parseHtmlServiceResponse(text);
+      if (result) return result;
+      
+      // Se falhou, try parse direto
+      if (text.trim().startsWith('{')) {
+        return JSON.parse(text.trim());
       }
-    } catch(e) {
-      console.error('Não é JSON válido');
+    } catch(directError) {
+      console.warn('Requisição direta falhou:', directError.message);
+      console.log('Tentando via proxy...');
+      
+      // FALLBACK: Usar proxy se direto falhar
+      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      const text = await res.text();
+      console.log('Resposta via proxy recebida, tamanho:', text.length);
+      
+      const result = parseHtmlServiceResponse(text);
+      if (result) return result;
     }
     
-    console.log('Resposta não contém JSON válido');
+    console.log('Resposta não pôde ser parseada');
     return { success: false, error: 'Resposta inválida da API.' };
   } catch(e) {
     console.error('Erro na chamada API:', e.message);
     return { success: false, error: 'Erro de conexão: ' + e.message };
   }
+}
+
+// Função auxiliar para parsear resposta HtmlService
+function parseHtmlServiceResponse(text) {
+  // Procurar por "userHtml" no texto (é o padrão do HtmlService)
+  const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+  if (userHtmlMatch && userHtmlMatch[1]) {
+    try {
+      // Desescapar: \x é hex escape, \\ é backslash
+      let escaped = userHtmlMatch[1];
+      
+      // Primeira passagem: converter \xNN para caracteres
+      escaped = escaped.replace(/\\x([0-9a-fA-F]{2})/g, function(match, hex) {
+        return String.fromCharCode(parseInt(hex, 16));
+      });
+      
+      // Segunda passagem: desescapar JSON
+      const unescaped = JSON.parse('"' + escaped + '"');
+      console.log('JSON extraído:', unescaped.substring(0, 150));
+      
+      const jsonData = JSON.parse(unescaped);
+      console.log('Dados parseados:', jsonData);
+      return jsonData;
+    } catch(e) {
+      console.error('Erro ao processar userHtml:', e.message);
+      return null;
+    }
+  }
+  
+  // Se não achou userHtml, tentar parsear como JSON direto
+  try {
+    const cleaned = text.trim();
+    if (cleaned.startsWith('{')) {
+      const jsonData = JSON.parse(cleaned);
+      console.log('JSON parseado direto:', jsonData);
+      return jsonData;
+    }
+  } catch(e) {
+    console.error('Não é JSON válido');
+    return null;
+  }
+  
+  return null;
 }
 
 // MODO DEMO (funciona sem API configurada)
