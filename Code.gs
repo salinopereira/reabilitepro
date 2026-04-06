@@ -17,7 +17,10 @@ function doGet() {
 function doOptions() {
   return HtmlService
     .createHtmlOutput('')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('Access-Control-Allow-Origin', '*')
+    .addMetaTag('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 function doPost(e) {

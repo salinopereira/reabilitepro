@@ -814,31 +814,57 @@ async function api(action, data = {}) {
 
     console.log('Enviando payload:', JSON.stringify(payload).substring(0, 200));
 
-    // Usar proxy CORS diretamente (Google Apps Script sempre bloqueia CORS)
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
-
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    const res = await fetch(proxyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+    // Tentar requisição direta primeiro
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-    const text = await res.text();
-    console.log('Resposta recebida, tamanho:', text.length);
+      const text = await res.text();
+      console.log('Resposta direta recebida, tamanho:', text.length);
 
-    const result = parseHtmlServiceResponse(text);
-    if (result) {
-      console.log('Resposta parseada:', result);
-      return result;
+      const result = parseHtmlServiceResponse(text);
+      if (result) {
+        console.log('Resposta parseada:', result);
+        return result;
+      }
+    } catch(directError) {
+      console.warn('Requisição direta falhou:', directError.message);
+      // CORS é esperado, tentar proxy como fallback
     }
 
-    console.log('Resposta não pôde ser parseada');
-    return { success: false, error: 'Resposta inválida da API.' };
+    // Fallback: tentar proxy CORS
+    console.log('Tentando via proxy CORS...');
+    try {
+      const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + API_URL;
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      const text = await res.text();
+      console.log('Resposta via proxy recebida, tamanho:', text.length);
+
+      const result = parseHtmlServiceResponse(text);
+      if (result) {
+        console.log('Resposta parseada via proxy:', result);
+        return result;
+      }
+    } catch(proxyError) {
+      console.warn('Proxy também falhou:', proxyError.message);
+    }
+
+    console.log('Todas as tentativas falharam');
+    return { success: false, error: 'Erro de conexão. Tente novamente.' };
   } catch(e) {
     console.error('Erro na chamada API:', e.message);
     return { success: false, error: 'Erro de conexão: ' + e.message };
@@ -1572,7 +1598,15 @@ if(savedProf && savedProf !== 'undefined' && savedProf !== 'null') {
   } catch(e) {
     console.warn('Erro ao carregar dados salvos, limpando localStorage');
     localStorage.removeItem('hp_prof');
+    // Limpar também outros dados possivelmente corrompidos
+    localStorage.removeItem('hp_pacientes');
+    localStorage.removeItem('hp_agendamentos');
+    localStorage.removeItem('hp_treinos');
+    localStorage.removeItem('hp_lancamentos');
   }
+} else if (savedProf === 'undefined' || savedProf === 'null') {
+  // Limpar dados corrompidos
+  localStorage.removeItem('hp_prof');
 }
 if(!API_URL.trim()) {
   // modo demo ativo por padrão até você colar a URL do Apps Script
