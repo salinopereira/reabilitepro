@@ -864,7 +864,9 @@ async function api(action, data = {}) {
     }
 
     console.log('Todas as tentativas falharam');
-    return { success: false, error: 'Erro de conexão. Tente novamente.' };
+    // Fallback para modo demo se API falhar
+    console.log('Fallback para modo demo');
+    return apiDemo(action, data);
   } catch(e) {
     console.error('Erro na chamada API:', e.message);
     return { success: false, error: 'Erro de conexão: ' + e.message };
@@ -1591,12 +1593,17 @@ function toast(msg,type='ok') {
 // BOOT
 // ============================================================
 const savedProf = localStorage.getItem('hp_prof');
-if(savedProf && savedProf !== 'undefined' && savedProf !== 'null') {
+if(savedProf && savedProf !== 'undefined' && savedProf !== 'null' && savedProf.trim() !== '') {
   try {
     prof = JSON.parse(savedProf);
-    initApp();
+    // Verificar se prof tem os campos necessários
+    if (prof && typeof prof === 'object' && prof.ID && prof.Nome) {
+      initApp();
+    } else {
+      throw new Error('Dados inválidos');
+    }
   } catch(e) {
-    console.warn('Erro ao carregar dados salvos, limpando localStorage');
+    console.warn('Erro ao carregar dados salvos, limpando localStorage:', e.message);
     localStorage.removeItem('hp_prof');
     // Limpar também outros dados possivelmente corrompidos
     localStorage.removeItem('hp_pacientes');
@@ -1604,7 +1611,7 @@ if(savedProf && savedProf !== 'undefined' && savedProf !== 'null') {
     localStorage.removeItem('hp_treinos');
     localStorage.removeItem('hp_lancamentos');
   }
-} else if (savedProf === 'undefined' || savedProf === 'null') {
+} else if (savedProf === 'undefined' || savedProf === 'null' || savedProf === '') {
   // Limpar dados corrompidos
   localStorage.removeItem('hp_prof');
 }
