@@ -809,6 +809,15 @@ async function api(action, data = {}) {
     return apiDemo(action, data);
   }
   try {
+    // Preparar dados em formato form-encoded (padrão para Google Apps Script)
+    const params = new URLSearchParams();
+    params.append('action', action);
+    
+    // Adicionar cada propriedade de data como um parâmetro separado
+    for (const [key, value] of Object.entries(data)) {
+      params.append(key, value || '');
+    }
+    
     // Usar proxy CORS com timeout
     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
     
@@ -817,8 +826,7 @@ async function api(action, data = {}) {
     
     const res = await fetch(proxyUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, data }),
+      body: params.toString(),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -830,13 +838,20 @@ async function api(action, data = {}) {
     const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
     if (userHtmlMatch && userHtmlMatch[1]) {
       try {
-        // Desescapar usando JSON.parse
-        const escaped = userHtmlMatch[1];
+        // Desescapar: \x é hex escape, \\ é backslash
+        let escaped = userHtmlMatch[1];
+        
+        // Primeira passagem: converter \xNN para caracteres
+        escaped = escaped.replace(/\\x([0-9a-fA-F]{2})/g, function(match, hex) {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
+        
+        // Segunda passagem: desescapar JSON
         const unescaped = JSON.parse('"' + escaped + '"');
-        console.log('JSON extraído:', unescaped.substring(0, 100));
+        console.log('JSON extraído:', unescaped.substring(0, 150));
         
         const jsonData = JSON.parse(unescaped);
-        console.log('Sucesso:', jsonData);
+        console.log('Dados parseados:', jsonData);
         return jsonData;
       } catch(e) {
         console.error('Erro ao processar userHtml:', e.message);
