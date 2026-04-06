@@ -10,17 +10,54 @@ const CONFIG = {
   }
 };
 
-function doGet() {
-  return jsonOutput({ success: true, status: 'HealthPro API online ✅', timestamp: new Date().toISOString() });
+function doGet(e) {
+  const callback = e && e.parameter && e.parameter.callback;
+  const action = e && e.parameter && e.parameter.action;
+  let data = {};
+  if (e && e.parameter && e.parameter.data) {
+    try {
+      data = JSON.parse(e.parameter.data);
+    } catch (err) {
+      return jsonOutput({ success: false, error: 'Parâmetro data inválido.' }, callback);
+    }
+  }
+
+  if (action) {
+    let result;
+    try {
+      switch (action) {
+        case 'ping': result = { success: true, pong: true }; break;
+        case 'registerProfissional': result = registerProfissional(data); break;
+        case 'loginProfissional': result = loginProfissional(data); break;
+        case 'addPaciente': result = addPaciente(data); break;
+        case 'getPacientes': result = getPacientes(data); break;
+        case 'updatePaciente': result = updatePaciente(data); break;
+        case 'deletePaciente': result = deletePaciente(data); break;
+        case 'addAgendamento': result = addAgendamento(data); break;
+        case 'getAgendamentos': result = getAgendamentos(data); break;
+        case 'updateAgendamento': result = updateAgendamento(data); break;
+        case 'deleteAgendamento': result = deleteAgendamento(data); break;
+        case 'addTreino': result = addTreino(data); break;
+        case 'getTreinos': result = getTreinos(data); break;
+        case 'updateTreino': result = updateTreino(data); break;
+        case 'deleteTreino': result = deleteTreino(data); break;
+        case 'addLancamento': result = addLancamento(data); break;
+        case 'getLancamentos': result = getLancamentos(data); break;
+        default: result = { success: false, error: 'Ação inválida: ' + action };
+      }
+    } catch (err) {
+      result = { success: false, error: err.message, stack: String(err.stack || '') };
+    }
+    return jsonOutput(result, callback);
+  }
+
+  return jsonOutput({ success: true, status: 'HealthPro API online ✅', timestamp: new Date().toISOString() }, callback);
 }
 
 function doOptions() {
   return HtmlService
     .createHtmlOutput('')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('Access-Control-Allow-Origin', '*')
-    .addMetaTag('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .addMetaTag('Access-Control-Allow-Headers', 'Content-Type');
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function doPost(e) {
@@ -414,10 +451,16 @@ function normalizeText(v) {
     .toLowerCase();
 }
 
-function jsonOutput(obj) {
-  return HtmlService
-    .createHtmlOutput(JSON.stringify(obj))
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+function jsonOutput(obj, callback) {
+  const payload = JSON.stringify(obj);
+  if (callback && /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(callback)) {
+    return ContentService
+      .createTextOutput(`${callback}(${payload});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService
+    .createTextOutput(payload)
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function test() {

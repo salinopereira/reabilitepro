@@ -844,7 +844,7 @@ async function api(action, data = {}) {
     // Fallback: tentar proxy CORS
     console.log('Tentando via proxy CORS...');
     try {
-      const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + API_URL;
+      const proxyUrl = 'https://thingproxy.freeboard.io/fetch/' + API_URL;
       const res = await fetch(proxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -864,8 +864,21 @@ async function api(action, data = {}) {
       console.warn('Proxy também falhou:', proxyError.message);
     }
 
+    // Fallback: tentar JSONP se o fetch direto e o proxy falharem
+    if (API_URL.trim()) {
+      console.log('Tentando fallback JSONP...');
+      try {
+        const result = await apiJsonp(action, data);
+        if (result) {
+          console.log('Resposta JSONP recebida:', result);
+          return result;
+        }
+      } catch(jsonpError) {
+        console.warn('JSONP também falhou:', jsonpError.message);
+      }
+    }
+
     console.log('Todas as tentativas falharam');
-    // Fallback para modo demo se API falhar
     console.log('Fallback para modo demo');
     return apiDemo(action, data);
   } catch(e) {
@@ -915,6 +928,35 @@ function parseHtmlServiceResponse(text) {
   }
   
   return null;
+}
+
+async function apiJsonp(action, data = {}) {
+  return new Promise((resolve, reject) => {
+    const callbackName = '__jsonp_callback_' + Math.random().toString(36).slice(2);
+    const timeoutId = setTimeout(() => {
+      delete window[callbackName];
+      reject(new Error('JSONP timeout'));
+    }, 10000);
+
+    window[callbackName] = function(response) {
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      resolve(response);
+    };
+
+    const url = API_URL + '?callback=' + callbackName + '&action=' + encodeURIComponent(action) + '&data=' + encodeURIComponent(JSON.stringify(data));
+    const script = document.createElement('script');
+    script.src = url;
+    script.async = true;
+    script.onerror = function() {
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('JSONP load failed'));
+    };
+    document.body.appendChild(script);
+  });
 }
 
 // MODO DEMO (funciona sem API configurada)
