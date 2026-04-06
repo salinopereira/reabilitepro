@@ -819,40 +819,40 @@ async function api(action, data = {}) {
     });
     const text = await res.text();
     
-    // Extrair userHtml usando padrão de busca
-    const userHtmlIndex = text.indexOf('"userHtml":"');
-    if (userHtmlIndex !== -1) {
-      const startIdx = userHtmlIndex + 12; // Posição após "userHtml":"
-      let endIdx = startIdx;
-      let escaped = false;
-      
-      // Encontrar o fim da string (até o " não escapado)
-      while (endIdx < text.length) {
-        if (text[endIdx] === '\\' && !escaped) {
-          escaped = true;
-          endIdx++;
-          continue;
-        }
-        if (text[endIdx] === '"' && !escaped) {
-          break;
-        }
-        escaped = false;
-        endIdx++;
-      }
-      
-      const userHtmlValue = text.substring(startIdx, endIdx);
+    // Tentar extrair userHtml usando padrão mais flexível
+    let jsonData = null;
+    
+    // Padrão 1: Procurar por "userHtml":"..."
+    const match = text.match(/"userHtml"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+    if (match && match[1]) {
       try {
-        // Desescapar e parsear
-        const unescaped = userHtmlValue
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\');
-        return JSON.parse(unescaped);
+        // Desescapar: \\ -> \, \" -> "
+        const escaped = match[1];
+        let unescaped = '';
+        for (let i = 0; i < escaped.length; i++) {
+          if (escaped[i] === '\\' && i + 1 < escaped.length) {
+            const nextChar = escaped[i + 1];
+            if (nextChar === '"') unescaped += '"';
+            else if (nextChar === '\\') unescaped += '\\';
+            else if (nextChar === 'n') unescaped += '\n';
+            else if (nextChar === 't') unescaped += '\t';
+            else unescaped += nextChar;
+            i++;
+          } else {
+            unescaped += escaped[i];
+          }
+        }
+        jsonData = JSON.parse(unescaped);
       } catch(e) {
-        console.error('Erro ao parsear userHtml:', e);
+        console.error('Erro ao desescapar/parsear userHtml:', e);
       }
     }
     
-    return { success: false, error: 'Resposta inválida da API.' };
+    if (jsonData && jsonData.success !== undefined) {
+      return jsonData;
+    }
+    
+    return { success: false, error: 'Resposta inválida da API. Tente novamente.' };
   } catch(e) {
     console.error('Erro na chamada API:', e);
     return { success: false, error: 'Erro de conexão. Verifique a URL da API.' };
