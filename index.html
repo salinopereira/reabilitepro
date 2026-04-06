@@ -815,15 +815,29 @@ async function api(action, data = {}) {
       body: JSON.stringify({ action, data })
     });
     const text = await res.text();
-    const match = text.match(/"userHtml"\s*:\s*"([^"]*)"/);
-    if (match) {
-      const jsonStr = match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-      return JSON.parse(jsonStr);
-    } else {
-      // Fallback para resposta direta
-      return JSON.parse(text.trim());
+    
+    // Tentar extrair userHtml do JSON
+    const match = text.match(/"userHtml":"([^"\\]*(\\.[^"\\]*)*)"/);
+    if (match && match[1]) {
+      try {
+        // Desescapar a string JSON
+        const jsonStr = JSON.parse('"' + match[1] + '"');
+        return JSON.parse(jsonStr);
+      } catch(e) {
+        console.error('Erro ao parsear JSON:', e);
+      }
     }
+    
+    // Se chegou aqui, tentar parsear como JSON diretamente
+    try {
+      return JSON.parse(text.trim());
+    } catch(e) {
+      console.error('Erro ao parsear resposta:', text);
+    }
+    
+    return { success: false, error: 'Resposta inválida da API.' };
   } catch(e) {
+    console.error('Erro na chamada API:', e);
     return { success: false, error: 'Erro de conexão. Verifique a URL da API.' };
   }
 }
