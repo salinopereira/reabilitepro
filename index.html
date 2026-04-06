@@ -809,53 +809,57 @@ async function api(action, data = {}) {
     return apiDemo(action, data);
   }
   try {
-    // Requisição direta (CORS pode falhar, mas POST é enviado mesmo assim)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    // Usar proxy CORS com timeout
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
     
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, data }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      
-      const text = await res.text();
-      console.log('Resposta recebida, tamanho:', text.length);
-      
-      // Tentar extrair userHtml do script
-      const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"]+(?:\\.[^"]+)*)"/);
-      if (userHtmlMatch && userHtmlMatch[1]) {
-        try {
-          const unescaped = JSON.parse('"' + userHtmlMatch[1] + '"');
-          const jsonData = JSON.parse(unescaped);
-          console.log('Sucesso:', jsonData);
-          return jsonData;
-        } catch(e) {
-          console.error('Erro ao parsear:', e);
-        }
-      }
-    } catch(e) {
-      clearTimeout(timeoutId);
-      // Erro de CORS ou timeout - mas a requisição foi enviada!
-      // POST é geralmente processada mesmo com erro de CORS na resposta
-      console.log('Erro na requisição (esperado CORS):', e.message);
-      
-      // Para operações que modificam dados, confiamos que foram processadas
-      if (['registerProfissional', 'loginProfissional', 'addPaciente', 'addAgendamento', 'addTreino', 'addLancamento'].includes(action)) {
-        // Aguardar um pouco e assumir sucesso (o backend processou)
-        await new Promise(r => setTimeout(r, 500));
-        console.log('Assumindo sucesso para ação:', action);
-        return { success: true, message: 'Operação executada' };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, data }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
+    const text = await res.text();
+    console.log('Resposta recebida, tamanho:', text.length);
+    
+    // Procurar por "userHtml" no texto (é o padrão do HtmlService)
+    const userHtmlMatch = text.match(/"userHtml"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    if (userHtmlMatch && userHtmlMatch[1]) {
+      try {
+        // Desescapar usando JSON.parse
+        const escaped = userHtmlMatch[1];
+        const unescaped = JSON.parse('"' + escaped + '"');
+        console.log('JSON extraído:', unescaped.substring(0, 100));
+        
+        const jsonData = JSON.parse(unescaped);
+        console.log('Sucesso:', jsonData);
+        return jsonData;
+      } catch(e) {
+        console.error('Erro ao processar userHtml:', e.message);
       }
     }
     
+    // Se não achou userHtml, tentar parsear como JSON direto
+    try {
+      const cleaned = text.trim();
+      if (cleaned.startsWith('{')) {
+        const jsonData = JSON.parse(cleaned);
+        console.log('JSON parseado direto:', jsonData);
+        return jsonData;
+      }
+    } catch(e) {
+      console.error('Não é JSON válido');
+    }
+    
+    console.log('Resposta não contém JSON válido');
     return { success: false, error: 'Resposta inválida da API.' };
   } catch(e) {
-    console.error('Erro crítico na API:', e);
-    return { success: false, error: 'Erro de conexão.' };
+    console.error('Erro na chamada API:', e.message);
+    return { success: false, error: 'Erro de conexão: ' + e.message };
   }
 }
 
@@ -1010,10 +1014,19 @@ function initApp() {
   document.getElementById('authScreen').style.display='none';
   document.getElementById('appRoot').style.display='';
   document.getElementById('mainFab').style.display='';
+  
+  // Verificar se prof está definido
+  if (!prof || !prof.Nome) {
+    console.error('Erro: prof não está definido corretamente');
+    alert('Erro ao carregar dados do profissional. Por favor, faça login novamente.');
+    setAuthTab('login');
+    return;
+  }
+  
   document.getElementById('hAv').textContent = prof.Nome.charAt(0).toUpperCase();
   document.getElementById('hName').textContent = prof.Nome.split(' ')[0];
   const chip = document.getElementById('planChip');
-  chip.textContent = (prof.Plano||'free').toUpperCase();
+  chip.textContent = (prof.Plano||'FREE').toUpperCase();
   chip.className = 'plan-chip ' + ((prof.Plano||'free')==='pro'?'plan-pro':'plan-free');
   // Verifica aviso de API
   if (API_URL.trim()) document.getElementById('apiWarn').style.display='none';
