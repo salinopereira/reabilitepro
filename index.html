@@ -820,76 +820,68 @@ async function api(action, data = {}) {
     const text = await res.text();
     
     console.log('Resposta recebida, tamanho:', text.length);
+    console.log('Primeiros 1000 chars:', text.substring(0, 1000));
+    console.log('Últimos 500 chars:', text.substring(text.length - 500));
     
-    // Estratégia 1: Procurar por userHtml com o JSON dentro (escapado)
-    // Exemplo: "userHtml":"{\\"success\\":true,...}"
-    const userHtmlStart = text.indexOf('"userHtml":"');
-    if (userHtmlStart !== -1) {
-      const startPos = userHtmlStart + 12; // Posição após "userHtml":"
-      let endPos = startPos;
-      let bracketCount = 0;
-      let inString = false;
+    // Procurar por qualquer coisa que pareça JSON
+    const jsonPatterns = [
+      /\{"success"\s*:\s*true[^}]*\}/g,
+      /\{"success"\s*:\s*false[^}]*\}/g,
+      /"userHtml"\s*:\s*"[^"]*"/
+    ];
+    
+    for (const pattern of jsonPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        console.log('Padrão encontrado:', match[0].substring(0, 200));
+      }
+    }
+    
+    // Estratégia 1: Procurar por userHtml
+    const userHtmlIndex = text.indexOf('"userHtml"');
+    if (userHtmlIndex !== -1) {
+      console.log('userHtml encontrado em posição:', userHtmlIndex);
+      console.log('Contexto:', text.substring(userHtmlIndex, userHtmlIndex + 300));
+      
+      const startPos = text.indexOf(':', userHtmlIndex) + 2; // Posição após ":"
+      const quote = text.substring(startPos, startPos + 1);
+      console.log('Primeira quote:', quote);
+      
+      let endPos = startPos + 1;
       let escaped = false;
       
-      // Encontrar o fim do JSON escapado
       while (endPos < text.length) {
-        const char = text[endPos];
-        
-        if (escaped) {
-          escaped = false;
-          endPos++;
-          continue;
-        }
-        
-        if (char === '\\') {
+        if (text[endPos] === '\\' && !escaped) {
           escaped = true;
-          endPos++;
-          continue;
-        }
-        
-        if (char === '"' && !inString) {
-          // Fim da string userHtml
+        } else if (text[endPos] === quote && !escaped) {
           break;
+        } else {
+          escaped = false;
         }
-        
         endPos++;
       }
       
-      if (endPos > startPos) {
-        const escapedJson = text.substring(startPos, endPos);
-        console.log('userHtml encontrado, tamanho:', escapedJson.length);
-        console.log('Primeiros 200 chars:', escapedJson.substring(0, 200));
-        
-        try {
-          // Desescapar: JSON.parse trata automaticamente \\", \\\\, etc
-          const unescaped = JSON.parse('"' + escapedJson + '"');
-          console.log('Desescapado:', unescaped.substring(0, 200));
-          
-          const jsonData = JSON.parse(unescaped);
-          console.log('JSON parseado com sucesso:', jsonData);
-          return jsonData;
-        } catch(e) {
-          console.error('Erro ao desescapar/parsear userHtml:', e.message);
-        }
-      }
-    }
-    
-    // Estratégia 2: Procurar por padrão JSON simples em qualquer lugar
-    const jsonMatch = text.match(/\{[^{}]*"success"[^{}]*\}/);
-    if (jsonMatch) {
+      const value = text.substring(startPos + 1, endPos);
+      console.log('userHtml value tamanho:', value.length);
+      console.log('userHtml value (primeiros 200):', value.substring(0, 200));
+      
       try {
-        console.log('JSON simples encontrado:', jsonMatch[0]);
-        return JSON.parse(jsonMatch[0]);
+        const unescaped = JSON.parse('"' + value + '"');
+        console.log('Desescapado (primeiros 200):', unescaped.substring(0, 200));
+        const jsonData = JSON.parse(unescaped);
+        console.log('JSON parseado:', jsonData);
+        return jsonData;
       } catch(e) {
-        console.error('Erro ao parsear JSON simples:', e);
+        console.error('Erro:', e.message);
       }
+    } else {
+      console.log('userHtml NÃO encontrado');
     }
     
-    console.log('Nenhum padrão válido encontrado');
     return { success: false, error: 'Resposta inválida da API.' };
   } catch(e) {
     console.error('Erro na chamada API:', e);
-    return { success: false, error: 'Erro de conexão. Verifique a URL da API.' };
+    return { success: false, error: 'Erro de conexão.' };
   }
 }
 
