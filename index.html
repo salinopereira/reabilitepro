@@ -819,23 +819,37 @@ async function api(action, data = {}) {
     });
     const text = await res.text();
     
-    // Tentar extrair userHtml do JSON
-    const match = text.match(/"userHtml":"([^"\\]*(\\.[^"\\]*)*)"/);
-    if (match && match[1]) {
-      try {
-        // Desescapar a string JSON
-        const jsonStr = JSON.parse('"' + match[1] + '"');
-        return JSON.parse(jsonStr);
-      } catch(e) {
-        console.error('Erro ao parsear JSON:', e);
+    // Extrair userHtml usando padrão de busca
+    const userHtmlIndex = text.indexOf('"userHtml":"');
+    if (userHtmlIndex !== -1) {
+      const startIdx = userHtmlIndex + 12; // Posição após "userHtml":"
+      let endIdx = startIdx;
+      let escaped = false;
+      
+      // Encontrar o fim da string (até o " não escapado)
+      while (endIdx < text.length) {
+        if (text[endIdx] === '\\' && !escaped) {
+          escaped = true;
+          endIdx++;
+          continue;
+        }
+        if (text[endIdx] === '"' && !escaped) {
+          break;
+        }
+        escaped = false;
+        endIdx++;
       }
-    }
-    
-    // Se chegou aqui, tentar parsear como JSON diretamente
-    try {
-      return JSON.parse(text.trim());
-    } catch(e) {
-      console.error('Erro ao parsear resposta:', text);
+      
+      const userHtmlValue = text.substring(startIdx, endIdx);
+      try {
+        // Desescapar e parsear
+        const unescaped = userHtmlValue
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+        return JSON.parse(unescaped);
+      } catch(e) {
+        console.error('Erro ao parsear userHtml:', e);
+      }
     }
     
     return { success: false, error: 'Resposta inválida da API.' };
