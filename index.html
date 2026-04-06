@@ -814,7 +814,15 @@ async function api(action, data = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, data })
     });
-    return await res.json();
+    const text = await res.text();
+    const match = text.match(/"userHtml"\s*:\s*"([^"]*)"/);
+    if (match) {
+      const jsonStr = match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      return JSON.parse(jsonStr);
+    } else {
+      // Fallback para resposta direta
+      return JSON.parse(text.trim());
+    }
   } catch(e) {
     return { success: false, error: 'Erro de conexão. Verifique a URL da API.' };
   }
