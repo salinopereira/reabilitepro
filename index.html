@@ -809,8 +809,12 @@ async function api(action, data = {}) {
     return apiDemo(action, data);
   }
   try {
-    // Preparar dados em JSON plano (Google Apps Script espera isso)
-    const payload = { action, ...data };
+    // Preparar dados como URLSearchParams (Google Apps Script acessa via e.parameter)
+    const params = new URLSearchParams();
+    params.append('action', action);
+    for (const [key, val] of Object.entries(data)) {
+      params.append(key, val || '');
+    }
     
     // Usar proxy CORS com timeout
     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(API_URL);
@@ -820,8 +824,8 @@ async function api(action, data = {}) {
     
     const res = await fetch(proxyUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: params.toString(),
+      // NÃO specifiquer Content-Type; Google Apps Script vai receber em e.parameter
       signal: controller.signal
     });
     clearTimeout(timeoutId);
